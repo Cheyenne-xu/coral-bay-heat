@@ -31,6 +31,7 @@ export function createInput(canvas) {
     }
     if (event.repeat) return;
     if (event.code === 'KeyE') actions |= ACTION_INTERACT;
+    else if (event.code === 'KeyC') actions |= ACTION_INTERACT; // C: continue a saved game from the title screen
     else if (event.code === 'KeyF' || event.code === 'Space') actions |= ACTION_PUNCH;
     else if (event.code === 'KeyP' || event.code === 'Escape') actions |= ACTION_PAUSE;
     else if (event.code === 'KeyM') actions |= ACTION_MUTE;

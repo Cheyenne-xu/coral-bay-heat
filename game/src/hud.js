@@ -1,6 +1,7 @@
 // HUD and minimap: health bar, cash, wanted stars, clock, mission tracker,
 // weapon readout, and the live minimap in the corner.
-import { BEACH_X, DISTRICTS, ROAD_XS, ROAD_YS, WATER_X, WORLD_H, WORLD_W } from './config.js';
+import { BEACH_X, DISTRICTS, WATER_X, WORLD_H, WORLD_W } from './config.js';
+import { ROAD_XS, ROAD_YS } from './world.js';
 import { missionTarget } from './missions.js';
 
 const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';

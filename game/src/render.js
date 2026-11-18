@@ -104,7 +104,7 @@ export function createRenderer(canvas) {
     // Roads.
     ctx.fillStyle = '#33363d';
     for (const rx of ROAD_XS) ctx.fillRect(rx - ROAD_W / 2, 0, ROAD_W, WORLD_H);
-    for (const ry of ROAD_YS) ctx.fillRect(0, ry - ROAD_W / 2, WORLD_W, ROAD_H);
+    for (const ry of ROAD_YS) ctx.fillRect(0, ry - ROAD_W / 2, WORLD_W, ROAD_W);
     // Sidewalks.
     ctx.fillStyle = '#8a8f98';
     for (const rx of ROAD_XS) {
