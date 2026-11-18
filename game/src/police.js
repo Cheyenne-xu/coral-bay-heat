@@ -1,8 +1,14 @@
 // The Coral Bay police: foot cops who chase and try to arrest the player,
 // and black-and-white interceptors that ram the player's car. The force
 // scales with the wanted level and backs off as the heat dies down.
-import { dist, randRange } from './random.js';
-import { nearestRoadX, nearestRoadY } from './world.js';
+// A ram is one hit with a cooldown (POLICE_RAM_COOLDOWN), never damage
+// every frame: a single touch must cost a dent, not the whole run.
+import {
+  POLICE_RAM_COOLDOWN, POLICE_RAM_DAMAGE, POLICE_RAM_DAMAGE_ON_FOOT,
+  POLICE_RAM_SPEED_CUT, POLICE_SPAWN_MAX, POLICE_SPAWN_MIN, POLICE_TOP_SPEED,
+} from './config.js';
+import { clamp, dist, randRange } from './random.js';
+import { nearestRoadX, nearestRoadY, resolveBuildingCollision } from './world.js';
 import { addCrime, burst, showToast } from './player.js';
 
 export function wantedStars(state) {
@@ -11,7 +17,16 @@ export function wantedStars(state) {
 
 function spawnCop(state, nearPlayer) {
   const p = state.player;
-  const a = Math.random() * Math.PI * 2;
+  // On foot the cops close in from any side; in a car chase they come up
+  // behind the player, so the player is not constantly driving into a cop
+  // who just spawned in their headlights (which also kept the player
+  // "seen" and the wanted level from ever decaying).
+  let a;
+  if (p.car) {
+    a = p.car.angle + Math.PI + (Math.random() - 0.5) * 1.2;
+  } else {
+    a = Math.random() * Math.PI * 2;
+  }
   const d = nearPlayer ? randRange(Math.random, 320, 480) : randRange(Math.random, 500, 700);
   state.cops.push({
     x: p.x + Math.cos(a) * d, y: p.y + Math.sin(a) * d,
@@ -21,14 +36,28 @@ function spawnCop(state, nearPlayer) {
 
 function spawnPoliceCar(state) {
   const p = state.player;
-  const rx = nearestRoadX(p.x);
-  const ry = nearestRoadY(p.y);
-  const behind = p.car ? -1 : 1;
+  // The unit starts behind the player, along their direction of travel, and
+  // snaps to the nearest road — so it chases instead of appearing head-on in
+  // the player's path, which used to guarantee a wreck the player never saw.
+  const gap = randRange(Math.random, POLICE_SPAWN_MIN, POLICE_SPAWN_MAX);
+  let x, y, angle;
+  if (p.car) {
+    const back = p.car.angle + Math.PI;
+    x = p.x + Math.cos(back) * gap;
+    y = p.y + Math.sin(back) * gap;
+    if (Math.abs(x - nearestRoadX(x)) < Math.abs(y - nearestRoadY(y))) x = nearestRoadX(x);
+    else y = nearestRoadY(y);
+    angle = p.car.angle;
+  } else {
+    const rx = nearestRoadX(p.x);
+    const ry = nearestRoadY(p.y);
+    x = rx + (Math.random() < 0.5 ? -gap : gap);
+    y = ry;
+    angle = 0;
+  }
   state.policeCars.push({
-    x: rx + (Math.random() < 0.5 ? -260 : 260) * behind,
-    y: ry,
-    angle: p.car ? p.car.angle : 0,
-    speed: 200, hp: 120, siren: true, stuck: 0,
+    x: clamp(x, 60, 2860), y: clamp(y, 60, 2340),
+    angle, speed: 200, hp: 120, siren: true, stuck: 0, ramCd: 0,
   });
 }
 
@@ -96,27 +125,37 @@ export function updatePolice(state, dt, audio) {
     while (diff > Math.PI) diff -= Math.PI * 2;
     while (diff < -Math.PI) diff += Math.PI * 2;
     pc.angle += Math.max(-2.4 * dt, Math.min(2.4 * dt, diff));
-    const targetSpeed = d > 260 ? 380 : 300;
+    const targetSpeed = d > 260 ? POLICE_TOP_SPEED : 300;
     pc.speed += (targetSpeed - pc.speed) * dt * 0.8;
     pc.x += Math.cos(pc.angle) * pc.speed * dt;
     pc.y += Math.sin(pc.angle) * pc.speed * dt;
-    // Ram the player's car, or knock the player down on foot.
-    if (d < 44) {
+    // Interceptors drive around buildings like everyone else: cutting
+    // straight through a block looked broken and let them appear on the
+    // player's bumper from inside a building. They slide along the wall
+    // instead, with no speed cut, so a chase never stalls on a corner.
+    resolveBuildingCollision(state.city, pc, 22);
+    pc.ramCd = Math.max(0, (pc.ramCd || 0) - dt);
+    // Ram the player's car, or knock the player down on foot. One hit per
+    // cooldown: the hit costs a dent and a shove, and the player can pull
+    // away again instead of being pinned while their health melts.
+    if (d < 44 && pc.ramCd <= 0) {
+      pc.ramCd = POLICE_RAM_COOLDOWN;
       burst(state, (pc.x + p.x) / 2, (pc.y + p.y) / 2, '#ffb14a', 10, 140);
-      if (audio) audio.crash();
+      state.shake = Math.max(state.shake || 0, 7);
+      if (audio) audio.ram();
       if (p.onFoot) {
-        p.hp = Math.max(0, p.hp - 18 * dt * 10);
-        p.x += Math.cos(pc.angle) * 60 * dt * 10;
-        p.y += Math.sin(pc.angle) * 60 * dt * 10;
+        p.hp = Math.max(0, p.hp - POLICE_RAM_DAMAGE_ON_FOOT);
+        p.x += Math.cos(pc.angle) * 46;
+        p.y += Math.sin(pc.angle) * 46;
         if (p.hp <= 0) {
           state.screen = 'busted';
           return 'busted';
         }
       } else if (p.car) {
-        p.car.speed *= 0.55;
-        p.hp = Math.max(0, p.hp - 2);
+        p.car.speed *= POLICE_RAM_SPEED_CUT;
+        p.hp = Math.max(0, p.hp - POLICE_RAM_DAMAGE);
       }
-      pc.speed *= 0.5;
+      pc.speed *= 0.6;
     }
     if (audio) audio.siren(true, dt);
   }
@@ -125,17 +164,23 @@ export function updatePolice(state, dt, audio) {
 }
 
 // Wanted decay: lay low, stay out of sight, and the heat cools off.
+// The grace after a crime is 3 seconds: long enough that a fresh crime
+// spree does not clear instantly, short enough that a real getaway can
+// actually start cooling (6 seconds meant any bump reset the clock and
+// the heat never moved during a chase).
 export function decayWanted(state, dt) {
-  if (state.time - state.lastCrimeAt < 6) return;
+  if (state.time - state.lastCrimeAt < 3) return;
   const nearestCop = state.cops.length > 0
     ? Math.min(...state.cops.map((c) => dist(c.x, c.y, state.player.x, state.player.y)))
     : 9999;
   const nearestCar = state.policeCars.length > 0
     ? Math.min(...state.policeCars.map((c) => dist(c.x, c.y, state.player.x, state.player.y)))
     : 9999;
-  const seen = Math.min(nearestCop, nearestCar) < 420;
+  // Seen means a unit is close enough to keep eyes on Rico: 320, not the
+  // old 420, so a clean getaway at full speed actually opens the gap.
+  const seen = Math.min(nearestCop, nearestCar) < 320;
   if (seen) return;
-  const rate = state.mission.index === 3 && state.mission.stage === 'active' ? 6 : 2.2;
+  const rate = state.mission.index === 3 && state.mission.stage === 'active' ? 8 : 2.2;
   state.heat = Math.max(0, state.heat - rate * dt);
   const stars = Math.min(5, Math.floor(state.heat / 20));
   if (stars < state.wanted) {

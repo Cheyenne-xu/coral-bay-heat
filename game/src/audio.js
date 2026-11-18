@@ -9,6 +9,7 @@ export function createAudio() {
   let sirenTimer = 0;
   let muted = false;
   let lastEngine = 0;
+  let lastSkid = 0;
 
   function ensure() {
     if (ctx) {
@@ -114,6 +115,16 @@ export function createAudio() {
     shot() { noise(0.14, 0.3, 2600); blip(180, 0.08, 'square', 0.1, 60); },
     punch() { noise(0.08, 0.2, 700); },
     crash() { noise(0.3, 0.4, 500); blip(70, 0.25, 'sine', 0.25, 40); },
+    // One dull thud for a police ram (the crash sound is for wrecks).
+    ram() { noise(0.16, 0.32, 420); blip(90, 0.16, 'sine', 0.2, 50); },
+    // Short tyre squeal while a skid mark is laid down; throttled so a long
+    // slide does not stack dozens of noise buffers on top of each other.
+    skid() {
+      const now = performance.now();
+      if (now - lastSkid < 140) return;
+      lastSkid = now;
+      noise(0.09, 0.05, 1800);
+    },
     pickup() { blip(660, 0.1, 'sine', 0.14); blip(990, 0.14, 'sine', 0.12); },
     cash() { blip(880, 0.09, 'sine', 0.14); blip(1174, 0.09, 'sine', 0.14); blip(1568, 0.16, 'sine', 0.14); },
     missionDone() {

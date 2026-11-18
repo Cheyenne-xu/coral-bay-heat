@@ -33,6 +33,20 @@ export const CAR = {
 
 export const WANTED_HEAT_PER_STAR = 20; // heat 0..100 maps to stars 0..5
 
+// Police rams: a ram is one hit with a cooldown, not damage every frame —
+// the old per-frame drain killed Rico in under a second of contact.
+export const POLICE_RAM_DAMAGE = 8; // hp lost per ram hit, in a car
+export const POLICE_RAM_DAMAGE_ON_FOOT = 12; // hp lost per ram hit, on foot
+export const POLICE_RAM_COOLDOWN = 0.9; // seconds between ram hits, per unit
+export const POLICE_RAM_SPEED_CUT = 0.82; // player car speed kept after a ram
+export const POLICE_SPAWN_MIN = 380; // police cars spawn this far out, min
+export const POLICE_SPAWN_MAX = 520;
+export const POLICE_TOP_SPEED = 360; // below the player's 440: escape is possible
+
+// Skid marks left by hard turns: how many segments the world keeps.
+export const MAX_SKIDS = 140;
+export const SKID_FADE = 14; // seconds for a skid mark to fade out
+
 export const DISTRICTS = [
   { name: 'Downtown', x0: 0, y0: 0, x1: 1600, y1: 1200, tone: '#c98f5f' },
   { name: 'Marina District', x0: 1600, y0: 0, x1: 2920, y1: 1200, tone: '#5fa8c9' },

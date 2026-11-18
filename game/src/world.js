@@ -5,7 +5,7 @@ import {
   BEACH_X, CAR_COLORS, DISTRICTS, PED_NAMES, PED_SHIRTS, ROAD_GAP, ROAD_W,
   WATER_X, WORLD_H, WORLD_W,
 } from './config.js';
-import { clamp, createRandom, pick, randInt, randRange } from './random.js';
+import { chance, clamp, createRandom, pick, randInt, randRange } from './random.js';
 
 export const ROAD_XS = [];
 export const ROAD_YS = [];
@@ -65,6 +65,15 @@ function buildCity(rng) {
     { x: 2040, y: 1640, w: 320, h: 320, name: 'Harbor Green' },
     { x: 1240, y: 2040, w: 320, h: 320, name: 'Old Town Gardens' },
   ];
+  // Palm trees line the beach and the marina front, so the east edge reads
+  // as a coast instead of a flat strip of sand.
+  const palms = [];
+  for (let y = 120; y < WORLD_H - 60; y += 170) {
+    palms.push({ x: BEACH_X - 40 + randRange(rng, -8, 8), y: y + randRange(rng, -20, 20) });
+  }
+  for (let x = 1700; x < BEACH_X - 120; x += 260) {
+    palms.push({ x, y: 240 + randRange(rng, -14, 14) });
+  }
   const blockW = ROAD_GAP - ROAD_W - 24;
   for (let bx = 0; bx < ROAD_XS.length; bx += 1) {
     for (let by = 0; by < ROAD_YS.length; by += 1) {
@@ -78,7 +87,7 @@ function buildCity(rng) {
       }
       if (inPark || cx > BEACH_X - 160) continue;
       const district = DISTRICTS.find((d) => cx >= d.x0 && cx < d.x1 && cy >= d.y0 && cy < d.y1) || DISTRICTS[0];
-      const tall = district.name === 'Downtown' && rng() < 0.55;
+      const tall = district.name === 'Downtown' && chance(rng, 0.55);
       const w = tall ? randRange(rng, 130, 200) : randRange(rng, 90, 170);
       const h = tall ? randRange(rng, 130, 200) : randRange(rng, 90, 170);
       buildings.push({
@@ -91,7 +100,7 @@ function buildCity(rng) {
       });
     }
   }
-  return { buildings, parks };
+  return { buildings, parks, palms };
 }
 
 export function collidesBuilding(city, x, y, radius) {
@@ -156,6 +165,8 @@ export function createGame(seed) {
     bullets: [],
     particles: [],
     pickups: [],
+    skids: [], // fading tyre marks from hard turns
+    shake: 0, // camera shake left, in pixels; decays every frame
     mission: {
       index: 0, stage: 'idle', // idle | active | done
       step: 0, target: null, packagesLeft: 0,

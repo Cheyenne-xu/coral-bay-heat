@@ -18,6 +18,11 @@ export function randInt(rng, min, max) {
   return min + Math.floor(rng() * (max - min + 1));
 }
 
+// True with probability p (0..1) on the seeded stream.
+export function chance(rng, p) {
+  return rng() < p;
+}
+
 export function pick(rng, list) {
   return list[Math.floor(rng() * list.length)];
 }

@@ -1,7 +1,8 @@
 // Vehicles: player car physics (acceleration, braking, steering, skids and
 // crashes) and the traffic AI that drives the road grid, turns at junctions
-// and honks when it is stuck.
-import { BEACH_X, CAR, ROAD_W, WORLD_H, WORLD_W } from './config.js';
+// and honks when it is stuck. Hard turns leave fading skid marks on the
+// road, and traffic respawns so the city never runs out of cars to steal.
+import { BEACH_X, CAR, MAX_SKIDS, ROAD_W, WORLD_H, WORLD_W } from './config.js';
 import { clamp, dist, randRange, turnToward } from './random.js';
 import { isRoad, isWater, nearestRoadX, nearestRoadY, resolveBuildingCollision } from './world.js';
 import { addCrime, burst } from './player.js';
@@ -25,18 +26,25 @@ function crashInto(state, car, other, audio, hard) {
   const ny = (other.y - car.y) / d;
   other.x += nx * 6;
   other.y += ny * 6;
+  // A bump is one event, not one per frame: while two cars stay overlapped,
+  // the speed cut and the crash burst must not fire again until the cooldown
+  // runs out. The old per-frame cut (speed * 0.4 every frame) pinned the
+  // player's car to a crawl the moment a police car touched it, so no chase
+  // could ever be escaped.
+  if ((car.bumpCd || 0) > 0) return;
   const impact = Math.abs(car.speed) + Math.abs(other.speed || 0);
   if (impact > 120) {
     burst(state, (car.x + other.x) / 2, (car.y + other.y) / 2, '#ffb14a', 12, 150);
     if (audio) audio.crash();
     if (car.driver === 'player' && impact > 260) {
-      addCrime(state, 3, 'Crash — reckless driving');
-      state.player.hp = Math.max(0, state.player.hp - 4);
+      addCrime(state, 2, 'Crash — reckless driving');
+      state.player.hp = Math.max(0, state.player.hp - 2);
     }
   }
   if (hard) {
     car.speed *= 0.4;
     if (other.speed !== undefined) other.speed *= 0.5;
+    car.bumpCd = 0.5;
   }
 }
 
@@ -44,6 +52,8 @@ export function updatePlayerCar(state, input, dt, audio) {
   const p = state.player;
   const car = p.car;
   if (!car) return;
+  car.bumpCd = Math.max(0, (car.bumpCd || 0) - dt);
+  car.wallCd = Math.max(0, (car.wallCd || 0) - dt);
   const k = input.keys;
   const forward = k.up ? 1 : k.down ? -1 : 0;
   if (forward > 0) car.speed += CAR.accel * dt;
@@ -63,13 +73,20 @@ export function updatePlayerCar(state, input, dt, audio) {
   const prevY = car.y;
   car.x += Math.cos(car.angle) * car.speed * dt;
   car.y += Math.sin(car.angle) * car.speed * dt;
-  // Skid smoke on hard turns at speed.
-  if (Math.abs(car.speed) > 260 && steer !== 0 && Math.random() < 0.5) {
-    state.particles.push({
-      x: car.x - Math.cos(car.angle) * 18, y: car.y - Math.sin(car.angle) * 18,
-      vx: -Math.cos(car.angle) * 20, vy: -Math.sin(car.angle) * 20,
-      life: 0.5, maxLife: 0.5, color: '#9aa0a8', size: 5,
-    });
+  // Skid smoke on hard turns at speed, plus a dark mark that stays on the road.
+  if (Math.abs(car.speed) > 260 && steer !== 0) {
+    if (Math.random() < 0.5) {
+      state.particles.push({
+        x: car.x - Math.cos(car.angle) * 18, y: car.y - Math.sin(car.angle) * 18,
+        vx: -Math.cos(car.angle) * 20, vy: -Math.sin(car.angle) * 20,
+        life: 0.5, maxLife: 0.5, color: '#9aa0a8', size: 5,
+      });
+    }
+    if (Math.random() < 0.6) {
+      state.skids.push({ x: prevX, y: prevY, x2: car.x, y2: car.y, life: 14 });
+      if (state.skids.length > MAX_SKIDS) state.skids.splice(0, state.skids.length - MAX_SKIDS);
+      if (audio) audio.skid();
+    }
   }
   if (isWater(car.x, car.y) || car.x < 20 || car.y < 20 || car.x > WORLD_W - 20 || car.y > WORLD_H - 20) {
     car.x = prevX;
@@ -81,10 +98,16 @@ export function updatePlayerCar(state, input, dt, audio) {
     if (Math.abs(car.speed) > 200) {
       burst(state, car.x, car.y, '#ffb14a', 10, 140);
       if (audio) audio.crash();
+      state.shake = Math.max(state.shake || 0, 6);
       addCrime(state, 2, 'You smashed into a building');
-      state.player.hp = Math.max(0, state.player.hp - 3);
+      state.player.hp = Math.max(0, state.player.hp - 2);
     }
-    car.speed *= 0.45;
+    // One speed cut per wall hit, not one per frame: scraping along a wall
+    // used to multiply the speed by 0.45 every frame and glue the car to it.
+    if ((car.wallCd || 0) <= 0) {
+      car.speed *= 0.45;
+      car.wallCd = 0.4;
+    }
   }
   // Car-to-car bumps.
   for (const other of state.cars) {
@@ -117,6 +140,12 @@ export function updatePlayerCar(state, input, dt, audio) {
 
 export function updateTraffic(state, dt, audio) {
   const p = state.player;
+  // Keep the city alive: if too many cars were stolen or wrecked, fresh
+  // ones roll in from the far side instead of leaving empty roads. About
+  // one a second while the count is low, so a stolen-car spree is visible
+  // in the traffic again within a few seconds.
+  const traffic = state.cars.filter((c) => c.driver === 'traffic').length;
+  if (traffic < 12 && Math.random() < dt * 1.5) spawnTrafficCar(state);
   for (const car of state.cars) {
     if (car.driver !== 'traffic') continue;
     car.honkCd -= dt;
