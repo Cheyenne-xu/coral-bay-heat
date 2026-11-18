@@ -30,6 +30,7 @@ export function createInput(canvas) {
       return;
     }
     if (event.repeat) return;
+    if (event.code === 'Space') event.preventDefault(); // Space punches; never scroll the page
     if (event.code === 'KeyE') actions |= ACTION_INTERACT;
     else if (event.code === 'KeyC') actions |= ACTION_INTERACT; // C: continue a saved game from the title screen
     else if (event.code === 'KeyF' || event.code === 'Space') actions |= ACTION_PUNCH;

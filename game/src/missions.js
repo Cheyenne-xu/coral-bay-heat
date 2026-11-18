@@ -8,7 +8,7 @@ export const STORY_INTRO = [
   'Rico Vega is back in Coral Bay — broke, with a borrowed jacket and a',
   'reputation he would rather forget. Fixer Mara Quinn has work for him,',
   'if he can stay out of the Coral Bay Police Department\'s way.',
-  'Five jobs. One way out. Do the work, take the cash, don\'t get caught.',
+  'Six jobs. One way out. Do the work, take the cash, don\'t get caught.',
 ];
 
 export const MISSIONS = [
@@ -48,6 +48,14 @@ export const MISSIONS = [
     pickup: { x: 2720, y: 2200 },
     dropoff: { x: 480, y: 2040 },
     reward: 500,
+  },
+  {
+    title: 'Job 6 — Hot Wheels',
+    brief: 'Mara has a buyer for a sports car, no questions asked. Bring her a sports car — any one, in one piece — to the Harbor.',
+    start: { x: 2400, y: 800 },
+    dropoff: { x: 2400, y: 2000 },
+    needsSport: true,
+    reward: 400,
   },
 ];
 
@@ -136,7 +144,7 @@ export function updateMissions(state, dt, audio) {
   // Job 4 is pure evasion: survive until the wanted level hits zero.
   if (state.mission.index === 3) {
     m.timer += dt;
-    m.objective = `Lose the cops! Wanted ${state.wanted}★ — stay out of sight (${Math.max(0, Math.ceil(20 - m.timer))}s min).`;
+    m.objective = `Lose the cops! Wanted ${state.wanted}★ — stay out of sight until the heat dies.`;
     if (state.wanted === 0 && m.timer > 6) {
       completeMission(state, audio);
     }
@@ -181,6 +189,17 @@ export function updateMissions(state, dt, audio) {
     return;
   }
   if (def.dropoff) {
+    // Job 6 only counts if Rico arrives in a sports car.
+    if (def.needsSport) {
+      const inSport = !p.onFoot && p.car && p.car.kind === 'sport';
+      m.objective = inSport
+        ? 'Sports car secured — deliver it to the Harbor dropoff.'
+        : 'Steal a sports car and bring it to the Harbor dropoff.';
+      if (inSport && dist(p.x, p.y, def.dropoff.x, def.dropoff.y) < 52) {
+        completeMission(state, audio);
+      }
+      return;
+    }
     m.objective = state.mission.index === 0
       ? 'Drive the client to the Marina dropoff.'
       : state.mission.index === 2

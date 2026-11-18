@@ -1,12 +1,11 @@
 // Drawing only: the city, the people and cars in it, the sky and the menus.
 // The camera follows the player smoothly; the world is drawn in world space,
 // the HUD and menus in screen space. All art is drawn in code — no images.
-import { BEACH_X, GAME_TITLE, ROAD_W, WATER_X, WORLD_H, WORLD_W } from './config.js';
-import { ROAD_XS, ROAD_YS, isRoad } from './world.js';
+import { BEACH_X, DISTRICTS, GAME_TITLE, ROAD_W, WATER_X, WORLD_H, WORLD_W } from './config.js';
+import { ROAD_XS, ROAD_YS } from './world.js';
 import { clamp } from './random.js';
 import { drawHud } from './hud.js';
-import { missionTarget } from './missions.js';
-import { STORY_INTRO } from './missions.js';
+import { MISSIONS, STORY_INTRO, missionTarget } from './missions.js';
 
 export const SCREEN_TITLE = 'title';
 export const SCREEN_INTRO = 'intro';
@@ -50,6 +49,8 @@ export function createRenderer(canvas) {
     const halfH = viewH / 2 / camera.scale;
     camera.x = clamp(camera.x, halfW - 100, WORLD_W - halfW + 100);
     camera.y = clamp(camera.y, halfH - 100, WORLD_H - halfH + 100);
+    // Camera shake from crashes and rams fades out over a fraction of a second.
+    state.shake = Math.max(0, (state.shake || 0) - dt * 26);
   }
 
   function dayTint(state) {
@@ -65,11 +66,14 @@ export function createRenderer(canvas) {
     // Grass base.
     ctx.fillStyle = '#5a7a4a';
     ctx.fillRect(0, 0, WORLD_W, WORLD_H);
-    // District ground tints.
-    ctx.fillStyle = '#6a7a5a';
-    ctx.fillRect(0, 0, 1600, 1200);
-    ctx.fillStyle = '#5a6a5a';
-    ctx.fillRect(1600, 1200, 1320, 1200);
+    // District ground tints, from the district table: each quarter of the
+    // city reads differently from the air and on the minimap.
+    for (const d of DISTRICTS) {
+      ctx.fillStyle = d.tone;
+      ctx.globalAlpha = 0.16;
+      ctx.fillRect(d.x0, d.y0, d.x1 - d.x0, d.y1 - d.y0);
+    }
+    ctx.globalAlpha = 1;
     // Parks.
     for (const park of city.parks) {
       ctx.fillStyle = '#4f8a4a';
@@ -101,6 +105,18 @@ export function createRenderer(canvas) {
     ctx.font = `700 18px ${FONT}`;
     ctx.textAlign = 'center';
     ctx.fillText('CORAL BAY — THE WATER', WATER_X + 110, 60);
+    // Palm trees along the beach and the marina front.
+    for (const palm of city.palms) {
+      ctx.fillStyle = '#6a4a2a';
+      ctx.fillRect(palm.x - 2, palm.y - 4, 4, 12);
+      ctx.fillStyle = '#3f8a3f';
+      for (let f = 0; f < 5; f += 1) {
+        const a = (f / 5) * Math.PI * 2 + 0.4;
+        ctx.beginPath();
+        ctx.ellipse(palm.x + Math.cos(a) * 9, palm.y - 6 + Math.sin(a) * 6, 9, 3.5, a, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
     // Roads.
     ctx.fillStyle = '#33363d';
     for (const rx of ROAD_XS) ctx.fillRect(rx - ROAD_W / 2, 0, ROAD_W, WORLD_H);
@@ -252,16 +268,28 @@ export function createRenderer(canvas) {
 
   function drawWorld(state, now) {
     const p = state.player;
-    // Cull to the visible window.
-    const vx0 = camera.x - viewW / 2 / camera.scale - 80;
-    const vy0 = camera.y - viewH / 2 / camera.scale - 80;
-    const vx1 = camera.x + viewW / 2 / camera.scale + 80;
-    const vy1 = camera.y + viewH / 2 / camera.scale + 80;
-    void vx0; void vy0; void vx1; void vy1;
+    // The whole ground is drawn every frame: at this city size it still
+    // holds 60 fps, so no culling pass is worth its complexity here.
     drawGround(state);
 
+    // Fading tyre marks from hard turns, oldest first.
+    if (state.skids.length > 0) {
+      ctx.strokeStyle = 'rgba(20,20,24,0.5)';
+      ctx.lineWidth = 4;
+      ctx.lineCap = 'round';
+      for (const s of state.skids) {
+        ctx.globalAlpha = Math.max(0, Math.min(0.5, s.life / 14 * 0.5));
+        ctx.beginPath();
+        ctx.moveTo(s.x, s.y);
+        ctx.lineTo(s.x2, s.y2);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    }
+
     // Mission marker: a tall pulsing beacon, visible across the city.
-    const target = missionTarget(state);
+    // Gameplay only — the title screen has its own backdrop without it.
+    const target = (state.screen === 'play' || state.screen === 'paused') ? missionTarget(state) : null;
     if (target) {
       const pulse = 1 + Math.sin(now / 300) * 0.18;
       ctx.save();
@@ -385,7 +413,6 @@ export function createRenderer(canvas) {
       ctx.fillStyle = `rgba(5,8,25,${tint.dark})`;
       ctx.fillRect(camera.x - viewW, camera.y - viewH, viewW * 2, viewH * 2);
     }
-    void isRoad;
   }
 
   function drawPanel(title, lines, prompt, accent) {
@@ -416,11 +443,16 @@ export function createRenderer(canvas) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = '#0e1420';
     ctx.fillRect(0, 0, viewW, viewH);
+    // Camera shake: a random offset up to `state.shake` world pixels, so a
+    // crash or a police ram lands on screen as well as in the health bar.
+    const sh = state.shake || 0;
+    const camX = camera.x + (sh > 0 ? (Math.random() * 2 - 1) * sh : 0);
+    const camY = camera.y + (sh > 0 ? (Math.random() * 2 - 1) * sh : 0);
     if (screen === SCREEN_TITLE || screen === SCREEN_INTRO) {
       // Title over a slow pan of the city.
       ctx.save();
       ctx.setTransform(dpr * camera.scale, 0, 0, dpr * camera.scale,
-        dpr * (viewW / 2 - camera.x * camera.scale), dpr * (viewH / 2 - camera.y * camera.scale));
+        dpr * (viewW / 2 - camX * camera.scale), dpr * (viewH / 2 - camY * camera.scale));
       drawWorld(state, now);
       ctx.restore();
       ctx.fillStyle = 'rgba(8,10,18,0.45)';
@@ -437,7 +469,7 @@ export function createRenderer(canvas) {
           'Steal cars. Lose the cops. Do Mara\'s jobs. Own the city.',
           'WASD move / drive  •  Mouse aim  •  Click shoot  •  F punch',
           'E enter / exit car  •  Shift run  •  P pause  •  M mute',
-          `Cash $${state.cash}  •  Jobs done ${state.stats.missionsDone} of 5`,
+          `Cash $${state.cash}  •  Jobs done ${state.stats.missionsDone} of ${MISSIONS.length}`,
         ], 'Press ENTER or click to start  •  C continue saved game', '#ffd23a');
       } else {
         drawPanel('THE STORY SO FAR', STORY_INTRO, 'Press ENTER to begin Job 1', '#4fc9c2');
@@ -447,7 +479,7 @@ export function createRenderer(canvas) {
     // Play and its overlays.
     ctx.save();
     ctx.setTransform(dpr * camera.scale, 0, 0, dpr * camera.scale,
-      dpr * (viewW / 2 - camera.x * camera.scale), dpr * (viewH / 2 - camera.y * camera.scale));
+      dpr * (viewW / 2 - camX * camera.scale), dpr * (viewH / 2 - camY * camera.scale));
     drawWorld(state, now);
     ctx.restore();
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -457,18 +489,18 @@ export function createRenderer(canvas) {
     if (screen === SCREEN_PAUSED) {
       drawPanel('PAUSED', [
         'The city waits for no one — except now.',
-        `Cash $${state.cash}  •  Jobs done ${state.stats.missionsDone} of 5  •  Cars stolen ${state.stats.carsStolen}`,
+        `Cash $${state.cash}  •  Jobs done ${state.stats.missionsDone} of ${MISSIONS.length}  •  Cars stolen ${state.stats.carsStolen}`,
         'Progress saves automatically when you finish a job.',
       ], 'Press P or click to resume', '#4fc9c2');
     } else if (screen === SCREEN_OVER) {
       drawPanel('WASTED', [
         'Rico went down in the streets of Coral Bay.',
-        `Cash $${state.cash}  •  Jobs done ${state.stats.missionsDone} of 5`,
+        `Cash $${state.cash}  •  Jobs done ${state.stats.missionsDone} of ${MISSIONS.length}`,
       ], 'Press ENTER to try again', '#e5534b');
     } else if (screen === SCREEN_BUSTED) {
       drawPanel('BUSTED', [
         'The Coral Bay Police Department caught up with Rico.',
-        `Cash $${state.cash}  •  Jobs done ${state.stats.missionsDone} of 5`,
+        `Cash $${state.cash}  •  Jobs done ${state.stats.missionsDone} of ${MISSIONS.length}`,
         'Bail costs $100. Pay up and get back to work.',
       ], 'Press ENTER to post bail and continue', '#3d7ad9');
     }

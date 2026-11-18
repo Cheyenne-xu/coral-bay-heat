@@ -33,6 +33,21 @@ function placePeds(state, spots) {
   }
 }
 
+// Move any car (other than the player's) that sits on top of the staged
+// player car to another road point, so a shot never shows two cars
+// overlapping: parked cars are placed at random and can land on the spot.
+function clearAroundPlayer(state, radius) {
+  const p = state.player;
+  for (const car of state.cars) {
+    if (car.driver === 'player') continue;
+    if (Math.hypot(car.x - p.x, car.y - p.y) < radius) {
+      const spot = randomRoadPoint(state.rng);
+      car.x = spot.x;
+      car.y = spot.y;
+    }
+  }
+}
+
 // Stage the named scene on a fresh game state and return the screen to draw.
 export function stageShot(name, state) {
   const fresh = createGame(state.seed);
@@ -60,6 +75,7 @@ export function stageShot(name, state) {
       { x: 960, y: 860, angle: -Math.PI / 2 },
       { x: 1180, y: 760, angle: Math.PI },
     ]);
+    clearAroundPlayer(state, 140);
     state.camera.x = 800;
     state.camera.y = 800;
     state.mission.index = 0;
@@ -91,6 +107,7 @@ export function stageShot(name, state) {
       { x: 1560, y: 1180, angle: 0, speed: 120, color: '#3d7ad9' },
       { x: 1200, y: 1560, angle: Math.PI / 2, speed: 100, color: '#e8e8e8' },
     ]);
+    clearAroundPlayer(state, 140);
     for (let i = 0; i < 10; i += 1) {
       state.particles.push({
         x: 1200 - i * 22, y: 1200 + (i % 2 === 0 ? 12 : -12),

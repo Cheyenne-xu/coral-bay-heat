@@ -1,8 +1,9 @@
 // HUD and minimap: health bar, cash, wanted stars, clock, mission tracker,
 // weapon readout, and the live minimap in the corner.
-import { BEACH_X, DISTRICTS, WATER_X, WORLD_H, WORLD_W } from './config.js';
+import { BEACH_X, WATER_X, WORLD_H, WORLD_W } from './config.js';
 import { ROAD_XS, ROAD_YS } from './world.js';
 import { missionTarget } from './missions.js';
+import { nearestCar } from './player.js';
 
 const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
 
@@ -81,13 +82,43 @@ export function drawHud(ctx, state, w, h, now) {
     ctx.globalAlpha = 1;
   }
 
-  // Controls hint, bottom-left.
+  // Controls hint, bottom-left: the box is measured from the text, so the
+  // line never spills past its background the way a fixed width did.
+  const hint = 'WASD move/drive  •  Mouse aim  •  Click shoot  •  F punch  •  E enter/exit car  •  Shift run  •  P pause  •  M mute';
   ctx.textAlign = 'left';
-  ctx.fillStyle = 'rgba(10,14,20,0.55)';
-  ctx.fillRect(14, h - 34, 560, 22);
-  ctx.fillStyle = '#c8cdd6';
   ctx.font = `12px ${FONT}`;
-  ctx.fillText('WASD move/drive  •  Mouse aim  •  Click shoot  •  F punch  •  E enter/exit car  •  Shift run  •  P pause  •  M mute', 22, h - 19);
+  const hintW = ctx.measureText(hint).width;
+  ctx.fillStyle = 'rgba(10,14,20,0.55)';
+  ctx.fillRect(14, h - 34, hintW + 16, 22);
+  ctx.fillStyle = '#c8cdd6';
+  ctx.fillText(hint, 22, h - 19);
+
+  // Context prompt: on foot next to a car, say so — new players otherwise
+  // walk past parked cars without realising E steals them.
+  if (state.player.onFoot && nearestCar(state, 70)) {
+    const prompt = 'Press E to take this car';
+    ctx.font = `700 15px ${FONT}`;
+    const pw = ctx.measureText(prompt).width;
+    ctx.fillStyle = 'rgba(10,14,20,0.78)';
+    ctx.fillRect((w - pw) / 2 - 12, h - 128, pw + 24, 30);
+    ctx.fillStyle = '#ffd23a';
+    ctx.textAlign = 'center';
+    ctx.fillText(prompt, w / 2, h - 108);
+  }
+
+  // Speedometer while driving, bottom-centre — same slot as the on-foot
+  // prompt above, so it never collides with the toast line below it.
+  if (!state.player.onFoot && state.player.car) {
+    const mph = Math.round(Math.abs(state.player.car.speed) * 0.24);
+    const label = `${mph} MPH`;
+    ctx.font = `800 22px ${FONT}`;
+    const lw = ctx.measureText(label).width;
+    ctx.fillStyle = 'rgba(10,14,20,0.62)';
+    ctx.fillRect((w - lw) / 2 - 12, h - 128, lw + 24, 32);
+    ctx.fillStyle = '#eef1f5';
+    ctx.textAlign = 'center';
+    ctx.fillText(label, w / 2, h - 105);
+  }
 
   drawMinimap(ctx, state, w, h, now);
   ctx.restore();
@@ -177,5 +208,4 @@ function drawMinimap(ctx, state, w, h, now) {
   ctx.font = `700 11px ${FONT}`;
   ctx.textAlign = 'left';
   ctx.fillText('CORAL BAY', x0 - 6, y0 - 10);
-  void DISTRICTS;
 }

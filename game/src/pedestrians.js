@@ -1,7 +1,7 @@
 // Pedestrians: they stroll the sidewalks, chat, panic and flee from gunfire
 // and speeding cars, and get back up after a while if they were knocked down.
 import { WORLD_H, WORLD_W } from './config.js';
-import { clamp, dist, randRange, turnToward } from './random.js';
+import { clamp, dist, turnToward } from './random.js';
 import { isWater, randomSidewalkPoint, resolveBuildingCollision } from './world.js';
 import { burst } from './player.js';
 
@@ -28,6 +28,15 @@ export function updatePedestrians(state, dt) {
     const playerCar = p.car;
     if (playerCar && Math.abs(playerCar.speed) > 220 && dist(ped.x, ped.y, playerCar.x, playerCar.y) < 200) {
       danger = playerCar;
+    }
+    // Sirens and speeding interceptors scare the street clear too.
+    if (!danger) {
+      for (const pc of state.policeCars) {
+        if (Math.abs(pc.speed) > 200 && dist(ped.x, ped.y, pc.x, pc.y) < 200) {
+          danger = pc;
+          break;
+        }
+      }
     }
     if (danger) {
       ped.state = 'flee';
@@ -117,5 +126,4 @@ export function updateBullets(state, dt, audio) {
     }
     if (dead) state.bullets.splice(i, 1);
   }
-  void randRange;
 }

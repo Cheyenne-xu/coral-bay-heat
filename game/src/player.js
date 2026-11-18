@@ -190,8 +190,12 @@ export function updatePlayerOnFoot(state, input, dt, audio, camera) {
     my /= len;
     const speed = k.run ? PLAYER.runSpeed : PLAYER.walkSpeed;
     p.speed = speed;
+    // Move one axis at a time and resolve buildings after each, so Rico
+    // slides along a wall instead of sticking to it on a diagonal walk.
     p.x += mx * speed * dt;
+    resolveBuildingCollision(state.city, p, PLAYER.radius);
     p.y += my * speed * dt;
+    resolveBuildingCollision(state.city, p, PLAYER.radius);
     // Face the mouse while aiming; otherwise face the walk direction.
     const mouse = input.mouse();
     const worldMouse = camera.toWorld(mouse.x, mouse.y);
@@ -209,9 +213,6 @@ export function updatePlayerOnFoot(state, input, dt, audio, camera) {
   }
   p.x = clamp(p.x, 16, WORLD_W - 16);
   p.y = clamp(p.y, 16, WORLD_H - 16);
-  if (resolveBuildingCollision(state.city, p, PLAYER.radius)) {
-    p.speed = 0;
-  }
   tryPickup(state, audio);
   if (input.mouseDown() && p.weapon === 'pistol') shoot(state, audio);
 }

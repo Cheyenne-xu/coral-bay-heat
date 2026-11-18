@@ -28,6 +28,9 @@ const seed = Number.isInteger(seedParam) ? seedParam : Math.floor(Math.random() 
 const canvas = document.getElementById('game');
 const status = document.getElementById('status');
 const state = createGame(seed);
+// Debug handle for automated playtests (read-only inspection in the
+// browser console, e.g. __game.cash): the game itself never reads it.
+window.__game = state;
 const renderer = createRenderer(canvas);
 const audio = createAudio();
 
@@ -94,10 +97,12 @@ function runGame() {
   let last = performance.now();
   let hadSave = !!loadSave();
   let savedMissions = state.stats.missionsDone;
+  let savedCash = state.cash;
 
   function startNew() {
     resetGame(state);
     savedMissions = 0;
+    savedCash = state.cash;
     state.screen = 'play';
     screen = 'intro';
     audio.ensure();
@@ -110,6 +115,7 @@ function runGame() {
     resetGame(state);
     applySave(save);
     savedMissions = state.stats.missionsDone;
+    savedCash = state.cash;
     state.screen = 'play';
     screen = 'play';
     audio.ensure();
@@ -130,6 +136,11 @@ function runGame() {
     decayWanted(state, dt);
     updateMissions(state, dt, audio);
     updateParticles(state, dt);
+    // Skid marks fade out over SKID_FADE seconds.
+    for (let i = state.skids.length - 1; i >= 0; i -= 1) {
+      state.skids[i].life -= dt;
+      if (state.skids[i].life <= 0) state.skids.splice(i, 1);
+    }
     // Pickups bob.
     for (const pk of state.pickups) pk.bob += dt;
     renderer.updateCamera(state, dt);
@@ -145,9 +156,11 @@ function runGame() {
       announce('Wasted. Rico went down in Coral Bay.');
       return;
     }
-    // Autosave whenever a job is finished.
-    if (state.stats.missionsDone > savedMissions) {
+    // Autosave whenever a job is finished or the cash changes (street cash,
+    // bail), so a reload never silently drops what the player just earned.
+    if (state.stats.missionsDone > savedMissions || state.cash !== savedCash) {
       savedMissions = state.stats.missionsDone;
+      savedCash = state.cash;
       saveGame();
     }
   }
