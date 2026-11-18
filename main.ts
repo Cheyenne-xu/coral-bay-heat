@@ -17,7 +17,7 @@
 // Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
 //   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
 
-import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildDossier } from './vendor/makefun-game.ts';
@@ -44,3 +44,9 @@ writeFileSync(
     game_path_max_bytes: 1000,
   }),
 );
+
+// Say what was handed in, so a bad run (missing screenshots, empty game)
+// is obvious from the log instead of failing silently at the gate.
+const shots = readdirSync(join(out, 'screenshots')).filter((f) => !f.startsWith('.'));
+const dossierBytes = statSync(join(out, 'dossier.json')).size;
+console.log(`Coral Bay Heat: ${shots.length} screenshot(s) (${shots.join(', ')}), dossier ${dossierBytes} bytes -> ${out}`);
